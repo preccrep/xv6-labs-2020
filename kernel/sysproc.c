@@ -6,7 +6,6 @@
 #include "memlayout.h"
 #include "spinlock.h"
 #include "proc.h"
-#include "sysinfo.h"
 
 uint64
 sys_exit(void)
@@ -95,28 +94,4 @@ sys_uptime(void)
   xticks = ticks;
   release(&tickslock);
   return xticks;
-}
-
-uint64
-sys_trace(void) {  //get mask from trace system call
-  int trace_mask;
-  if(argint(0, &trace_mask) < 0) return -1;
-  struct proc* p = myproc();
-  p->trace_mask = trace_mask;
-  return 0;
-}
-
-uint64
-sys_sysinfo(void) {
-  uint64 addr;
-  struct sysinfo info;
-  struct proc* p = myproc();
-  argaddr(0, &addr);
-
-  info.freemem = num_freemem(); //num_freemem() 函数用来获取空闲内存的数量，以byte为单位返回。定义在 kernel/kalloc.c 中
-  info.nproc = num_proc(); //num_unusedproc() 函数返回非 UNUSED state的进程数量。定义在 kernel/proc.c 中
-
-  if(copyout(p->pagetable, addr, (char*)&info, sizeof(info)) < 0)
-    return -1;
-  return 0;
 }
