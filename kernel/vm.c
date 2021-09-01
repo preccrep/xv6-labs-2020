@@ -5,8 +5,6 @@
 #include "riscv.h"
 #include "defs.h"
 #include "fs.h"
-#include "spinlock.h"
-#include "proc.h"
 
 /*
  * the kernel's page table.
@@ -123,13 +121,6 @@ kvmmap(uint64 va, uint64 pa, uint64 sz, int perm)
     panic("kvmmap");
 }
 
-// 添加映射到用户进程的kernel pagetable
-void
-ukvmmap(pagetable_t kpagetable, uint64 va, uint64 pa, uint64 sz, int perm) {
-  if(mappages(kpagetable, va, sz, pa, perm) != 0)
-    panic("ukvmmap");
-}
-
 // translate a kernel virtual address to
 // a physical address. only needed for
 // addresses on the stack.
@@ -141,7 +132,7 @@ kvmpa(uint64 va)
   pte_t *pte;
   uint64 pa;
   
-  pte = walk(myproc()->kpagetable, va, 0);
+  pte = walk(kernel_pagetable, va, 0);
   if(pte == 0)
     panic("kvmpa");
   if((*pte & PTE_V) == 0)
@@ -208,7 +199,8 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
 pagetable_t
 uvmcreate()
 {
-  pagetable_t pagetable = (pagetable_t) kalloc();
+  pagetable_t pagetable;
+  pagetable = (pagetable_t) kalloc();
   if(pagetable == 0)
     return 0;
   memset(pagetable, 0, PGSIZE);
@@ -387,24 +379,23 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
 int
 copyin(pagetable_t pagetable, char *dst, uint64 srcva, uint64 len)
 {
-  // uint64 n, va0, pa0;
+  uint64 n, va0, pa0;
 
-  // while(len > 0){
-  //   va0 = PGROUNDDOWN(srcva);
-  //   pa0 = walkaddr(pagetable, va0);
-  //   if(pa0 == 0)
-  //     return -1;
-  //   n = PGSIZE - (srcva - va0);
-  //   if(n > len)
-  //     n = len;
-  //   memmove(dst, (void *)(pa0 + (srcva - va0)), n);
+  while(len > 0){
+    va0 = PGROUNDDOWN(srcva);
+    pa0 = walkaddr(pagetable, va0);
+    if(pa0 == 0)
+      return -1;
+    n = PGSIZE - (srcva - va0);
+    if(n > len)
+      n = len;
+    memmove(dst, (void *)(pa0 + (srcva - va0)), n);
 
-  //   len -= n;
-  //   dst += n;
-  //   srcva = va0 + PGSIZE;
-  // }
-  // return 0;
-  return copyin_new(pagetable, dst, srcva, len);
+    len -= n;
+    dst += n;
+    srcva = va0 + PGSIZE;
+  }
+  return 0;
 }
 
 // Copy a null-terminated string from user to kernel.
@@ -414,82 +405,38 @@ copyin(pagetable_t pagetable, char *dst, uint64 srcva, uint64 len)
 int
 copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
 {
-  // uint64 n, va0, pa0;
-  // int got_null = 0;
+  uint64 n, va0, pa0;
+  int got_null = 0;
 
-  // while(got_null == 0 && max > 0){
-  //   va0 = PGROUNDDOWN(srcva);
-  //   pa0 = walkaddr(pagetable, va0);
-  //   if(pa0 == 0)
-  //     return -1;
-  //   n = PGSIZE - (srcva - va0);
-  //   if(n > max)
-  //     n = max;
+  while(got_null == 0 && max > 0){
+    va0 = PGROUNDDOWN(srcva);
+    pa0 = walkaddr(pagetable, va0);
+    if(pa0 == 0)
+      return -1;
+    n = PGSIZE - (srcva - va0);
+    if(n > max)
+      n = max;
 
-  //   char *p = (char *) (pa0 + (srcva - va0));
-  //   while(n > 0){
-  //     if(*p == '\0'){
-  //       *dst = '\0';
-  //       got_null = 1;
-  //       break;
-  //     } else {
-  //       *dst = *p;
-  //     }
-  //     --n;
-  //     --max;
-  //     p++;
-  //     dst++;
-  //   }
-
-  //   srcva = va0 + PGSIZE;
-  // }
-  // if(got_null){
-  //   return 0;
-  // } else {
-  //   return -1;
-  // }
-  return copyinstr_new(pagetable, dst, srcva, max);
-}
-
-// Recursively search page-table pages.
-// Using DFS
-void dfsPrint(pagetable_t pagetable, int level) {
-  for(int i = 0; i < 512; i++) { //从0-511去查看page table entry
-    pte_t pte = pagetable[i];
-    if(pte & PTE_V) {
-      uint64 child = PTE2PA(pte);
-      for(int j = 0; j <= level; j++) {
-        printf(".."); //一个j代表一层
-        if(j != level) printf(" "); //如果不是最后一层就输出空格
+    char *p = (char *) (pa0 + (srcva - va0));
+    while(n > 0){
+      if(*p == '\0'){
+        *dst = '\0';
+        got_null = 1;
+        break;
+      } else {
+        *dst = *p;
       }
-      printf("%d: pte %p pa %p\n", i, pte, child);
-      if((pte & (PTE_R | PTE_W | PTE_X)) == 0) //如果指向下一级页表
-        dfsPrint((pagetable_t)child, level + 1);
+      --n;
+      --max;
+      p++;
+      dst++;
     }
+
+    srcva = va0 + PGSIZE;
   }
-}
-
-void vmprint(pagetable_t pagetable) {
-  printf("page table %p\n", pagetable);
-  dfsPrint(pagetable, 0);
-}
-
-void ukvmcopy(pagetable_t pt, pagetable_t kpt, uint64 begin, uint64 end, char* name) {
-  pte_t *upte, *kpte;
-  uint64 pa;
-  uint f;
-  if(begin > end) return;
-  for(uint64 i = begin; i < end; i += PGSIZE) {
-    if((upte = walk(pt, i, 0)) == 0) {
-      printf("%s: ", name);
-      panic("pte should exist");
-    }
-    if((kpte = walk(kpt, i, 1)) == 0) {
-      printf("%s: ", name);
-      panic("walk failed");
-    }
-    pa = PTE2PA(*upte);
-    f = (PTE_FLAGS(*upte) & (~PTE_U));
-    *kpte = PA2PTE(pa) | f;
+  if(got_null){
+    return 0;
+  } else {
+    return -1;
   }
 }
