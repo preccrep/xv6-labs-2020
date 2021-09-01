@@ -41,14 +41,25 @@ sys_wait(void)
 uint64
 sys_sbrk(void)
 {
-  int addr;
-  int n;
+  // int addr;
+  // int n;
 
-  if(argint(0, &n) < 0)
-    return -1;
-  addr = myproc()->sz;
-  if(growproc(n) < 0)
-    return -1;
+  // if(argint(0, &n) < 0)
+  //   return -1;
+  // addr = myproc()->sz;
+  // myproc()->sz += n;
+  // // if(growproc(n) < 0)
+  // //   return -1;
+  // return addr;
+  int n;
+  if(argint(0, &n) < 0) return -1;
+  struct proc *p = myproc();
+  uint64 addr = p->sz;
+  uint64 newSize = addr + n;
+  if(newSize >= MAXVA) return addr;
+  if(n < 0)     //n<0说明是减小n字节，newSize < addr
+    uvmunmap(p->pagetable, PGROUNDUP(newSize), (PGROUNDUP(addr) - PGROUNDUP(newSize)) / PGSIZE, 1);
+  p->sz = newSize;
   return addr;
 }
 
