@@ -66,22 +66,7 @@ usertrap(void)
 
     syscall();
   } else if((which_dev = devintr()) != 0){
-    if(which_dev == 2 && p->waitRet == 0) {
-      if(p->interval != 0){
-        p->duration++;
-        if(p->duration == p->interval) {
-          switchTrapframe(p->alarm_tf, p->trapframe);
-          p->duration = 0;
-          p->trapframe->epc = (uint64)p->handler;
-          p->waitRet = 1;
-          // if(p->alarm_tf == 0) {
-          //   p->alarm_tf = kalloc();
-          //   memmove(p->alarm_tf, p->trapframe, 512);
-          //   p->trapframe->epc = p->handler;
-          // }
-        }
-      }
-    }
+    // ok
   } else {
     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
     printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
@@ -233,40 +218,3 @@ devintr()
   }
 }
 
-void switchTrapframe(struct trapframe* tf, struct trapframe* atf) {
-  tf->kernel_satp = atf->kernel_satp;
-  tf->kernel_sp = atf->kernel_sp;
-  tf->epc = atf->epc;
-  tf->kernel_hartid = atf->kernel_hartid;
-  tf->ra = atf->ra;
-  tf->sp = atf->sp;
-  tf->gp = atf->gp;
-  tf->tp = atf->tp;
-  tf->t0 = atf->t0;
-  tf->t1 = atf->t1;
-  tf->t2 = atf->t2;
-  tf->s0 = atf->s0;
-  tf->s1 = atf->s1;
-  tf->a0 = atf->a0;
-  tf->a1 = atf->a1;
-  tf->a2 = atf->a2;
-  tf->a3 = atf->a3;
-  tf->a4 = atf->a4;
-  tf->a5 = atf->a5;
-  tf->a6 = atf->a6;
-  tf->a7 = atf->a7;
-  tf->s2 = atf->s2;
-  tf->s3 = atf->s3;
-  tf->s4 = atf->s4;
-  tf->s5 = atf->s5;
-  tf->s6 = atf->s6;
-  tf->s7 = atf->s7;
-  tf->s8 = atf->s8;
-  tf->s9 = atf->s9;
-  tf->s10 = atf->s10;
-  tf->s11 = atf->s11;
-  tf->t3 = atf->t3;
-  tf->t4 = atf->t4;
-  tf->t5 = atf->t5;
-  tf->t6 = atf->t6;
-}
