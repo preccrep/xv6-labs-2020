@@ -5,6 +5,11 @@
 #include "riscv.h"
 #include "defs.h"
 #include "fs.h"
+#include "spinlock.h"
+#include "sleeplock.h"
+#include "file.h"
+#include "proc.h"
+#include "fcntl.h"
 
 /*
  * the kernel's page table.
@@ -240,6 +245,44 @@ uvmalloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz)
   return newsz;
 }
 
+int
+mmap_alloc(pagetable_t pagetable, uint64 va)
+{ 
+  char *mem;
+  struct proc *p = myproc();
+  struct VMA *v;
+  // find vma struct
+  for (v = p->vma; v < p->vma + NVMA; v++) {
+    if(v->used && va >= v->addr && va < v->end) {
+      break;
+    }
+  }
+  if (v == p->vma + NVMA) {
+    return -1;
+  }
+  mem = kalloc();
+  if(mem == 0){
+    return -1;
+  }
+  memset(mem, 0, PGSIZE);
+  begin_op();
+  ilock(v->f->ip);
+  int len;
+  if((len = readi(v->f->ip, 0, (uint64)mem, va - v->addr, PGSIZE)) < 0) {
+    iunlock(v->f->ip);
+    end_op();
+    return -1;
+  }
+  iunlock(v->f->ip);
+  end_op();
+  int f = PTE_U | (v->prot << 1);
+  if(mappages(pagetable, va, PGSIZE, (uint64)mem, f) != 0) {
+    kfree(mem);
+    return -1;
+  }
+  return 0;
+}
+
 // Deallocate user pages to bring the process size from oldsz to
 // newsz.  oldsz and newsz need not be page-aligned, nor does newsz
 // need to be less than oldsz.  oldsz can be larger than the actual
@@ -272,6 +315,7 @@ freewalk(pagetable_t pagetable)
       freewalk((pagetable_t)child);
       pagetable[i] = 0;
     } else if(pte & PTE_V){
+      // remain a valid leaf point to phsical memory
       panic("freewalk: leaf");
     }
   }

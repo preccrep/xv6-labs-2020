@@ -134,6 +134,11 @@ found:
   p->context.ra = (uint64)forkret;
   p->context.sp = p->kstack + PGSIZE;
 
+  for(int i = 0; i < NVMA; i++) {
+    p->vma[i].used = 0;
+  }
+  p->mmap_start = MMAPSTART;
+
   return p;
 }
 
@@ -296,6 +301,20 @@ fork(void)
       np->ofile[i] = filedup(p->ofile[i]);
   np->cwd = idup(p->cwd);
 
+  np->mmap_start = p->mmap_start;
+  for(i = 0; i < NVMA; i++) {
+    np->vma[i].addr = p->vma[i].addr;
+    np->vma[i].end = p->vma[i].end;
+    np->vma[i].used = p->vma[i].used;
+    np->vma[i].flags = p->vma[i].flags;
+    np->vma[i].prot = p->vma[i].prot;
+    
+    if(p->vma[i].used && p->vma[i].f) {
+      np->vma[i].f = filedup(p->vma[i].f);
+    }
+  }
+  
+
   safestrcpy(np->name, p->name, sizeof(p->name));
 
   pid = np->pid;
@@ -350,6 +369,15 @@ exit(int status)
       struct file *f = p->ofile[fd];
       fileclose(f);
       p->ofile[fd] = 0;
+    }
+  }
+
+  struct VMA *v;
+  for (v = p->vma; v < p->vma + NVMA; v++) {
+    if(v->used) {
+      if (s_munmap(v->addr, v->end - v->addr) < 0) {
+        panic("exit:munmap");
+      }
     }
   }
 

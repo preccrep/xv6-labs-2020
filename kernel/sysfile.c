@@ -16,6 +16,7 @@
 #include "file.h"
 #include "fcntl.h"
 
+#define min(a, b) ((a) < (b) ? (a) : (b))
 // Fetch the nth word-sized system call argument as a file descriptor
 // and return both the descriptor and the corresponding struct file.
 static int
@@ -482,5 +483,101 @@ sys_pipe(void)
     fileclose(wf);
     return -1;
   }
+  return 0;
+}
+
+uint64
+sys_mmap(void)
+{
+  int length, prot, flags, fd;
+  struct file *f;
+  if(argint(1, &length) < 0 || argint(2, &prot) < 0 
+    || argint(3, &flags) < 0 || argfd(4, &fd, &f) < 0) {
+      return 0xffffffffffffffff;
+  }
+  if (!f->writable && flags == MAP_SHARED && (prot & PROT_WRITE)) {
+    return 0xffffffffffffffff;
+  }
+  // find a vma
+  struct proc *p = myproc();
+  struct VMA *v;
+  for (v = p->vma; v < p->vma + NVMA; v++) {
+    if(!v->used) {
+      break;
+    }
+  }
+  if(v == p->vma + NVMA) {
+    return -1;
+  }
+  filedup(f);
+  v->addr = PGROUNDDOWN(p->mmap_start - length);
+  v->end = v->addr + length;
+  p->mmap_start = v->addr;
+
+  v->used = 1;
+  v->f = f;
+  v->prot = prot;
+  v->flags = flags;
+  v->offset = 0;
+  return v->addr;
+}
+
+uint64
+sys_munmap(void)
+{
+  uint64 addr;
+  int length;
+  if(argaddr(0, &addr) < 0 || argint(1, &length) < 0) {
+    return -1;
+  }
+  return s_munmap(addr, length);
+
+}
+
+uint64
+s_munmap(uint64 addr, int length) {
+  struct proc *p = myproc();
+  struct VMA *v;
+  for (v = p->vma; v < p->vma + NVMA; v++) {
+    if(v->used && v->addr <= addr && addr + length <= v->end) {
+      break;
+    }
+  }
+  if(v == p->vma + NVMA) {
+    return -1;
+  }
+  
+  uint64 end = addr + length;
+  uint64 _addr = addr;
+  while (addr < end) {
+    // if already load in
+    if(walkaddr(p->pagetable, addr)) {
+      if(v->flags == MAP_SHARED && v->f->writable) {
+        begin_op();
+        ilock(v->f->ip);
+        int size = min(end-addr, PGSIZE);
+        if(writei(v->f->ip, 1, addr, addr - v->addr, size) < size) {
+          iunlock(v->f->ip);
+          end_op();
+          return -1;
+        }
+        iunlock(v->f->ip);
+        end_op();
+      }
+      uvmunmap(p->pagetable, addr, 1, 1);
+    }
+    addr += PGSIZE;
+  }
+  if(_addr == v->addr) {
+    v->addr += length;
+  } else if(_addr + length == v->end) {
+    v->end -= length;
+  }
+  
+  if (v->addr == v->end) {
+    fileundup(v->f);
+    v->used = 0;
+  }
+  
   return 0;
 }
