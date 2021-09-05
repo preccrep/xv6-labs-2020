@@ -12,5 +12,5 @@ Check branches!
 - [Lab: Copy on-write](https://github.com/preccrep/xv6-labs-2020/tree/cow)
 - [Lab: Multithreading](https://github.com/preccrep/xv6-labs-2020/tree/thread)
 - [Lab: Lock](https://github.com/preccrep/xv6-labs-2020/tree/lock)
-<!-- - [Lab: File system]()
-- [Lab: mmap]() -->
+- [Lab: File system](https://github.com/preccrep/xv6-labs-2020/tree/fs)
+<!-- - [Lab: mmap]() -->
