@@ -13,4 +13,4 @@ Check branches!
 - [Lab: Multithreading](https://github.com/preccrep/xv6-labs-2020/tree/thread)
 - [Lab: Lock](https://github.com/preccrep/xv6-labs-2020/tree/lock)
 - [Lab: File system](https://github.com/preccrep/xv6-labs-2020/tree/fs)
-<!-- - [Lab: mmap]() -->
+- [Lab: mmap](https://github.com/preccrep/xv6-labs-2020/tree/mmap)
